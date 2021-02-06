@@ -4,5 +4,6 @@ output*
 memory_config
 *.zip
 success_output_save
+test*.py
 
 
