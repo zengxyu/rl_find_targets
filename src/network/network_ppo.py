@@ -1,46 +1,46 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
-class PPOPolicy(torch.nn.Module):
+class PPO(nn.Module):
     def __init__(self, action_size):
         super().__init__()
-        self.con1 = torch.nn.Conv2d(1, 16, kernel_size=8, stride=6)
-        self.con2 = torch.nn.Conv2d(16, 32, kernel_size=4, stride=2)
-        # self.con3 = torch.nn.Conv2d(32, 32, 3)
-        # self.sm = torch.nn.Softmax2d()
-        self.fc1 = torch.nn.Linear(128, 32)
-        # self.fc2 = torch.nn.Linear(64, 64)
-        # self.fc3 = torch.nn.Linear(64, 64)
-
-        self.fc_pose = torch.nn.Linear(2, 32)
+        self.frame_con1 = torch.nn.Conv2d(1, 4, kernel_size=8, stride=4)
+        self.frame_con2 = torch.nn.Conv2d(4, 8, kernel_size=4, stride=2)
+        self.frame_fc1 = torch.nn.Linear(72, 32)
+        self.pose_fc1 = torch.nn.Linear(2, 32)
 
         self.fc_val = torch.nn.Linear(64, 1)
         self.fc_pol = torch.nn.Linear(64, action_size)
 
-        # Initialize neural network weights
-        # self.init_weights()
-
-    def init_weights(self):
-        for m in self.modules():
-            if type(m) is torch.nn.Linear or type(m) is torch.nn.Conv2d:
-                torch.nn.init.zeros_(m.weight)
-                torch.nn.init.zeros_(m.bias)
-
     def forward(self, frame, robot_pose):
-        out = self.con1(frame)
-        out = F.relu(out)
-        out = self.con2(out)
-        out = F.relu(out)
-        out = out.reshape(out.size(0), -1)
-        out = self.fc1(out)
-        out = F.relu(out)
+        frame_size = frame.size()
+        pose_size = robot_pose.size()
 
-        out_pose = self.fc_pose(robot_pose)
-        out_pose = F.relu(out_pose)
-        out = torch.cat((out, out_pose), dim=1)
+        frame = frame.reshape(frame_size[0] * frame_size[1], frame_size[2], frame_size[3], frame_size[4])
+        robot_pose = robot_pose.reshape(pose_size[0] * pose_size[1], pose_size[-1])
 
+        out1 = F.relu(self.frame_con1(frame))
+
+        # out1 : [batch_size*seq_len, dim, h, w]
+        out1 = F.relu(self.frame_con2(out1))
+
+        # out1 : [batch_size*seq_len, input_size]
+        out1 = out1.reshape(out1.size()[0], -1)
+        out1 = F.relu(self.frame_fc1(out1))
+
+        # out2 : [batch_size*seq_len, input_size]
+        out2 = F.relu(self.pose_fc1(robot_pose))
+
+        # out : [batch_size*seq_len, input_size]
+        out = torch.cat((out1, out2), dim=1)
+        out_size = out.size()
+
+        out = out.reshape(frame_size[0], frame_size[1], out_size[1])
+
+        # ===================================================changed
         val = self.fc_val(out)
         pol = self.fc_pol(out)
-        pol = F.softmax(pol, dim=1)
+        pol = F.softmax(pol, dim=2)
         return val, pol

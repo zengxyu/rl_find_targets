@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 import numpy as np
 
-from src.network.normalizer import Normalizer
+from src.memory.normalizer import Normalizer
 
 
 class Network_Policy_Gradient(torch.nn.Module):

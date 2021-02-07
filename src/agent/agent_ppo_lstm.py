@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from src.env.config import ACTION
 from src.network.network_ppo_lstm import PPO_LSTM
-from src.network.memory_ppo_lstm import MemoryPPOLSTM
+from src.memory.memory_ppo_lstm import MemoryPPOLSTM
 
 
 class Agent:
@@ -80,7 +80,7 @@ class Agent:
         # print("train net")
         loss_v = 0
         for i in range(self.batch_size):
-            frame, pos, a, r, frame_prime, pos_prime, done_mask, prob_a, h_in, c_in, h_out, c_out = self.memory.make_batch(
+            frame, pos, a, r, frame_prime, pos_prime, prob_a, done_mask, h_in, c_in, h_out, c_out = self.memory.make_batch(
                 i * self.seq_len, self.train_device)
 
             value_prime, _, _, _ = self.policy(frame_prime, pos_prime, h_out, c_out)

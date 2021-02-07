@@ -1,6 +1,6 @@
 import os
 
-from src.agent.agent_ppo_lstm2 import Agent
+from src.agent.agent_ppo_lstm3 import Agent
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import argparse
@@ -21,7 +21,7 @@ parser.add_argument("--headless", default=False, action="store_true", help="Run 
 args = parser.parse_args()
 
 params = {
-    'name': 'ppo_lstm',
+    'name': 'ppo',
     # field
     'w': FIELD.w,
     'h': FIELD.h,
@@ -36,8 +36,8 @@ params = {
     'eps_min': 0.15,  # Minimum epsilon
     'gamma': 0.9,
     'buffer_size': 200000,
-    'batch_size': 16,
-    'seq_len': 1,
+    'batch_size': 64,
+    'seq_len': 4,
     'action_size': len(ACTION),
 
     'is_double': False,
@@ -55,7 +55,7 @@ params = {
     # folder params
 
     # output
-    'output_folder': "output_lstm",
+    'output_folder': "output_ppo",
     'log_folder': 'log',
     'model_folder': 'model',
     'memory_config_dir': "memory_config",
@@ -90,8 +90,6 @@ all_mean_losses = []
 for i_episode in range(0, params['num_episodes']):
     print("\nepisode = ", i_episode)
 
-    h_out, c_out = torch.zeros([1, 1, 32], dtype=torch.float), torch.zeros([1, 1, 32], dtype=torch.float)
-
     observed_map, robot_pose = grid_env.reset()
     done = False
     rewards = []
@@ -100,16 +98,14 @@ for i_episode in range(0, params['num_episodes']):
         # for t in range(T_horizon):
         # print("\nt horizon = ", t)
         global_step += 1
-        h_in, c_in = h_out, c_out
-        action, value, probs, h_out, c_out = player.act(observed_map, robot_pose, h_in, c_in)
+        action, value, probs = player.act(observed_map, robot_pose)
 
         observed_map_prime, robot_pose_prime, reward, done = grid_env.step(action.detach().cpu().numpy()[0][0])
 
         player.store_data(
             [observed_map, robot_pose, action.detach().cpu().numpy().squeeze(), reward, observed_map_prime,
              robot_pose_prime, value.detach().cpu().numpy().squeeze(), probs.detach().cpu().numpy().squeeze(),
-             done, h_in.detach().cpu().numpy()[0], c_in.detach().cpu().numpy()[0], h_out.detach().cpu().numpy()[0],
-             c_out.detach().cpu().numpy()[0]])
+             done])
 
         observed_map = observed_map_prime.copy()
         robot_pose = robot_pose_prime.copy()

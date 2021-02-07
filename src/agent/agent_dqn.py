@@ -5,8 +5,8 @@ import torch.optim as optim
 import numpy as np
 
 from src.network.network_dqn import *
-from src.network.normalizer import Normalizer
-from src.network.replay_buffer import PriorityReplayBuffer
+from src.memory.normalizer import Normalizer
+from src.memory.replay_buffer import PriorityReplayBuffer
 
 
 class Agent:

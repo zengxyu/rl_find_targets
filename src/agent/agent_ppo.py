@@ -1,36 +1,43 @@
+import os
+
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
 import torch
 import torch.nn.functional as F
-import numpy as np
 from src.env.config import ACTION
-from src.network.network_ppo import PPOPolicy
+from src.network.network_ppo import PPO
+from src.memory.memory_ppo import MemoryPPO
 
 
 class Agent:
     """description of class"""
 
-    def __init__(self, field, train_agent=False, is_resume=False, filepath="", train_device=torch.device('cuda')):
+    def __init__(self, params, writer, train_agent=False, is_resume=False, filepath="",
+                 train_device=torch.device('cuda')):
         self.name = "PPOng"
         self.train_agent = train_agent
-        self.frame_size = np.product(field.shape)
+        self.writer = writer
+        # self.frame_size = np.product(field.shape)
         self.pose_size = 2
         self.action_size = len(ACTION)
         self.TRAJ_COLLECTION_NUM = 16
         self.TRAJ_LEN = 4
+        self.batch_size = params['batch_size']
+        self.seq_len = params['seq_len']
+
         # self.BATCH_SIZE = 32
         self.tlen_counter = 0
         self.tcol_counter = 0
         # self.FRAME_SKIP = 1
         self.EPSILON = 0.2
         self.EPOCH_NUM = 4
+        self.K_epoch = 4
         self.gamma = 0.98
         self.train_device = train_device  # 'cuda' if torch.cuda.is_available() else 'cpu'
         print("train device : {}".format(self.train_device))
-        self.policy = PPOPolicy(self.frame_size, self.action_size).to(self.train_device)
-        # self.old_policy = copy.deepcopy(self.policy)
+        self.policy = self.get_model(is_resume, filepath)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=1e-4)
-        if is_resume:
-            self.load_model(filename=filepath, map_location=self.train_device)
-        self.traj_memory = [[], [], [], [], [], []]
+        self.memory = MemoryPPO(batch_size=self.batch_size, seq_len=self.seq_len)
 
         self.frames = []
         self.robot_poses = []
@@ -44,10 +51,12 @@ class Agent:
         self.last_probs = None
         self.last_reward = None
         self.last_value = None
-        # self.observations = []
-        # self.values = []
-        # self.best_values = []
-        # self.rewards = []
+
+    def get_model(self, is_resume, filepath):
+        policy = PPO(self.action_size).to(self.train_device)
+        if is_resume:
+            self.load_model(filename=filepath, map_location=self.train_device)
+        return policy
 
     def load_model(self, filename, map_location=None):  # pass 'cpu' as map location if no cuda available
         state_dict = torch.load(filename, map_location)
@@ -64,94 +73,72 @@ class Agent:
         self.last_reward = None
         self.last_value = None
 
-    def store_trajectory_to_memory(self):
-        T = len(self.deltas)
-        advantages = torch.zeros(T, 1).to(self.train_device)
-        returns = torch.zeros(T, 1).to(self.train_device)
-        advantages[T - 1] = self.deltas[T - 1]
-        returns[T - 1] = advantages[T - 1] + self.values[T - 1]
-        for i in range(1, T):
-            advantages[T - i - 1] = self.deltas[T - i - 1] + self.gamma * advantages[T - i]
-            returns[T - i - 1] = advantages[T - i - 1] + self.values[T - i - 1]
+    def store_data(self, transition):
+        self.memory.put_data(transition)
 
-        self.traj_memory[0].extend(self.frames)
-        self.traj_memory[1].extend(self.robot_poses)
-        self.traj_memory[2].extend(self.actions)
-        self.traj_memory[3].extend(returns)
-        self.traj_memory[4].extend(self.probs)
-        self.traj_memory[5].extend(advantages)
-        # self.traj_memory.append((self.states, self.actions, returns, self.probs, advantages))
-        self.frames = []
-        self.robot_poses = []
-        self.actions = []
-        self.values = []
-        self.probs = []
-        self.deltas = []
-        self.tlen_counter = 0
-        self.tcol_counter += 1
+    def train_net(self):
+        # print("train net")
+        loss_v = 0
+        for i in range(self.batch_size):
+            frame, pos, a, r, frame_prime, pos_prime, prob_a, done_mask = self.memory.make_batch(
+                i * self.seq_len, self.train_device)
 
-        if self.tcol_counter >= self.TRAJ_COLLECTION_NUM:
-            self.update_policy()
+            value_prime, _ = self.policy(frame_prime, pos_prime)
+            td_target = r + self.gamma * value_prime * done_mask
+            value, pol = self.policy(frame, pos)
 
-    def get_action(self, frame, robot_pose):
-        frame_in = torch.Tensor([[frame]]).to(self.train_device)
-        robot_pose_in = torch.Tensor([robot_pose]).to(self.train_device)
+            delta = td_target - value
+            delta = delta.detach().cpu().numpy()
 
-        # if self.k % self.FRAME_SKIP == 0: # compute action every FRAME_SKIP-th frame
+            advantage = 0.0
+
+            advantage_lst = []
+            for item in delta[::-1]:
+                advantage = self.gamma * advantage + item[0]
+                advantage_lst.append([advantage])
+
+            advantage_lst.reverse()
+            advantage = torch.tensor(advantage_lst, dtype=torch.float)
+
+            a = a.squeeze()
+            advantage = advantage.squeeze()
+            pol = pol.squeeze()
+            prob_a = prob_a.squeeze()
+
+            new_categorical = torch.distributions.Categorical(pol)
+            prob_new = new_categorical.log_prob(a)
+
+            ratio = torch.exp(prob_new - prob_a)  # a/b == log(exp(a)-exp(b))
+            advantage = advantage.to(self.train_device)
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1 - self.EPSILON, 1 + self.EPSILON) * advantage
+            loss_ent = -new_categorical.entropy().mean()
+            loss = -torch.min(surr1, surr2) + F.mse_loss(value, td_target.detach()) + 0.01 * loss_ent
+
+            self.optimizer.zero_grad()
+            loss.mean().backward(retain_graph=True)
+
+            self.optimizer.step()
+
+            # print("loss mean:{}".format(loss.mean().item()))
+            loss_v += loss.mean().item()
+
+        return loss_v / self.K_epoch
+
+    def act(self, frame, robot_pose):
+        # frame : [seq_len, batch_size, dim, h, w]
+        frame_in = torch.Tensor([[[frame]]]).to(self.train_device)
+        robot_pose_in = torch.Tensor([[robot_pose]]).to(self.train_device)
+
         value, pol = self.policy(frame_in, robot_pose_in)
-        action = torch.distributions.Categorical(pol).sample()
-        # else:
-        #    action = self.last_action
 
-        # self.k += 1
-
-        # self.values.append(value.narrow(1, int(action), 1))
-        # self.best
-        # _values.append(torch.max(value).detach())
-
-        if self.train_agent:
-            # store transition
-            if self.last_frame is not None:
-                self.frames.append(self.last_frame)
-                self.robot_poses.append(self.last_robot_pose)
-                self.actions.append(self.last_action)
-                self.values.append(self.last_value.detach())
-                self.probs.append(self.last_probs.detach())
-                self.deltas.append(self.last_reward + self.gamma * value.detach() - self.last_value.detach())
-                self.tlen_counter += 1
-                if (self.tlen_counter >= self.TRAJ_LEN):
-                    self.store_trajectory_to_memory()
-
-        self.last_frame = frame_in
-        self.last_robot_pose = robot_pose_in
-        self.last_action = action
-        self.last_probs = pol
-        self.last_value = value
-
-        return action
-
-    def store_reward(self, reward, final_state):
-        if not self.train_agent:  # doesn't have to save reward if not training
-            return
-
-        self.last_reward = reward
-
-        if final_state:
-            self.frames.append(self.last_frame)
-            self.robot_poses.append(self.last_robot_pose)
-            self.actions.append(self.last_action)
-            self.values.append(self.last_value.detach())
-            self.probs.append(self.last_probs.detach())
-            self.deltas.append(self.last_reward - self.last_value.detach())
-
-            self.store_trajectory_to_memory()
-
-        # self.rewards.append(torch.Tensor([reward]))
+        categorical = torch.distributions.Categorical(pol)
+        action = categorical.sample()
+        log_prob = categorical.log_prob(action)
+        return action, log_prob
 
     def update_policy(self):
         for i in range(self.EPOCH_NUM):
-            # samples = self.traj_memory[i]
-            # samples = random.sample(self.traj_memory, self.BATCH_SIZE)
             mb_frames, mb_robot_poses, mb_actions, mb_returns, mb_probs, mb_advantages = self.traj_memory
 
             new_vals, new_probs = self.policy(torch.cat(mb_frames, dim=0).to(self.train_device),
@@ -163,25 +150,17 @@ class Agent:
 
             action_tensor = torch.cat(mb_actions, dim=0)
 
-            # new_pol2 = torch.gather(new_probs, dim=1, index=action_tensor.unsqueeze(1))
-            # old_pol2 = torch.gather(old_probs, dim=1, index=action_tensor.unsqueeze(1))
-
             ratio = torch.exp(new_pol.log_prob(action_tensor) - old_pol.log_prob(action_tensor))
-            # ratio2 = new_pol2 / old_pol2
 
             advantage_tensor = torch.cat(mb_advantages, dim=0)
-            # advantage_tensor -= torch.mean(advantage_tensor)
-            # advantage_tensor /= torch.std(advantage_tensor)
 
             loss_clip = -torch.min(ratio * advantage_tensor,
                                    torch.clamp(ratio, 1 - self.EPSILON, 1 + self.EPSILON) * advantage_tensor).mean()
-            # loss_clip2 = torch.min(ratio2 * advantage_tensor, torch.clamp(ratio2, 1-self.EPSILON, 1+self.EPSILON) * advantage_tensor)
 
             returns_tensor = torch.cat(mb_returns, dim=0)
 
             loss_val = F.mse_loss(new_vals.squeeze(), returns_tensor)
 
-            # loss_ent = -F.nll_loss(new_probs, action_tensor) #F.cross_entropy(new_probs, action_tensor)
             loss_ent = -new_pol.entropy().mean()
 
             c1, c2 = 1, 0.01
@@ -196,7 +175,6 @@ class Agent:
 
         self.traj_memory = [[], [], [], [], [], []]
         self.tcol_counter = 0
-        # self.old_policy = copy.deepcopy(self.policy)
 
     def get_name(self):
         return self.name

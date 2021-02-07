@@ -45,5 +45,5 @@ class PPO_LSTM(nn.Module):
         # ===================================================changed
         val = self.fc_val(out)
         pol = self.fc_pol(out)
-        pol = F.softmax(pol, dim=1)
+        pol = F.softmax(pol, dim=2)
         return val, pol, h_out, c_out

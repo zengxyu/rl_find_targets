@@ -3,7 +3,7 @@ from collections import deque, namedtuple
 import numpy as np
 import torch
 
-from src.network.data_structures import SumTree
+from src.memory.data_structures import SumTree
 
 
 class ReplayBuffer:

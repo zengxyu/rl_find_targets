@@ -30,7 +30,7 @@ class REWARD(IntEnum):
 
 class FIELD:
     # data
-    grid_path = os.path.join("data", "grid_data.txt")
+    grid_path = os.path.join("src/data", "grid_data.txt")
     if os.path.exists(grid_path):
         data = pickle.load(open(grid_path, 'rb'))
         h = data.shape[0]
