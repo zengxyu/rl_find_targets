@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 
-class MemoryPPOLSTM:
+class MemoryPPO:
     def __init__(self, batch_size, seq_len):
         self.batch_size = batch_size
         self.seq_len = seq_len

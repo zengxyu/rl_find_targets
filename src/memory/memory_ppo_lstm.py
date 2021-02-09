@@ -29,10 +29,12 @@ class MemoryPPOLSTM:
             if key == "done":
                 done_mask = 0 if transitions[i] else 1
                 self.data[key].append([done_mask])
+            elif key in ["h_in", "c_in", "h_out", "c_out"]:
+                self.data[key].append(transitions[i].squeeze(1))
             else:
                 self.data[key].append(transitions[i])
 
-    def make_batch(self, i, train_device):
+    def make_batch(self, train_device):
         frame_batch = self.data["frames"]
         pose_batch = self.data["robot_poses"]
         a_batch = self.data["actions"]
@@ -63,21 +65,21 @@ class MemoryPPOLSTM:
         c_out_batch = torch.Tensor(c_out_batch).to(train_device)
 
         frame_batch = frame_batch.unsqueeze(2)
-        pose_batch = pose_batch.unsqueeze(2)
+        # pose_batch = pose_batch.unsqueeze(2)
         a_batch = a_batch.unsqueeze(2)
         r_batch = r_batch.unsqueeze(2)
         frame_prime_batch = frame_prime_batch.unsqueeze(2)
-        pos_prime_batch = pos_prime_batch.unsqueeze(2)
+        # pos_prime_batch = pos_prime_batch.unsqueeze(2)
         probs_batch = probs_batch.unsqueeze(2)
         returns_batch = returns_batch.unsqueeze(2)
         advantages_batch = advantages_batch.unsqueeze(2)
 
         frame_batch = frame_batch.permute(1, 0, 2, 3, 4)
-        pose_batch = pose_batch.permute(1, 0, 2, 3)
+        pose_batch = pose_batch.permute(1, 0, 2)
         a_batch = a_batch.permute(1, 0, 2)
         r_batch = r_batch.permute(1, 0, 2)
         frame_prime_batch = frame_prime_batch.permute(1, 0, 2, 3, 4)
-        pos_prime_batch = pos_prime_batch.permute(1, 0, 2, 3)
+        pos_prime_batch = pos_prime_batch.permute(1, 0, 2)
         probs_batch = probs_batch.permute(1, 0, 2, 3)
         returns_batch = returns_batch.permute(1, 0, 2)
         advantages_batch = advantages_batch.permute(1, 0, 2)
@@ -88,7 +90,7 @@ class MemoryPPOLSTM:
         c_out_batch = c_out_batch.permute(1, 0, 2)
 
         return frame_batch, pose_batch, a_batch, r_batch, frame_prime_batch, pos_prime_batch, probs_batch, returns_batch, advantages_batch, \
-               h_in_batch, c_in_batch, h_out_batch, c_out_batch
+               h_in_batch.contiguous(), c_in_batch.contiguous(), h_out_batch.contiguous(), c_out_batch.contiguous()
 
     def __len__(self):
         return len(self.data["frames"])

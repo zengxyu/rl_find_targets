@@ -1,6 +1,7 @@
 import os
 
-from src.agent.agent_ppo_lstm2 import Agent
+from src.agent.agent_ppo_lstm import Agent
+from src.network.network_ppo_lstm import PPO_LSTM2, PPO_LSTM3, PPO_LSTM
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import argparse
@@ -37,7 +38,9 @@ params = {
     'gamma': 0.9,
     'buffer_size': 200000,
     'batch_size': 16,
-    'seq_len': 1,
+    'seq_len': 4,
+    'num_layers': 1,
+    'model': PPO_LSTM,  # PPO_LSTM, PPO_LSTM2, PPO_LSTM3
     'action_size': len(ACTION),
 
     'is_double': False,
@@ -90,7 +93,8 @@ all_mean_losses = []
 for i_episode in range(0, params['num_episodes']):
     print("\nepisode = ", i_episode)
 
-    h_out, c_out = torch.zeros([1, 1, 32], dtype=torch.float), torch.zeros([1, 1, 32], dtype=torch.float)
+    h_out = torch.zeros([params['num_layers'], 1, 32], dtype=torch.float)
+    c_out = torch.zeros([params['num_layers'], 1, 32], dtype=torch.float)
 
     observed_map, robot_pose = grid_env.reset()
     done = False
@@ -108,8 +112,8 @@ for i_episode in range(0, params['num_episodes']):
         player.store_data(
             [observed_map, robot_pose, action.detach().cpu().numpy().squeeze(), reward, observed_map_prime,
              robot_pose_prime, value.detach().cpu().numpy().squeeze(), probs.detach().cpu().numpy().squeeze(),
-             done, h_in.detach().cpu().numpy()[0], c_in.detach().cpu().numpy()[0], h_out.detach().cpu().numpy()[0],
-             c_out.detach().cpu().numpy()[0]])
+             done, h_in.detach().cpu().numpy(), c_in.detach().cpu().numpy(), h_out.detach().cpu().numpy(),
+             c_out.detach().cpu().numpy()])
 
         observed_map = observed_map_prime.copy()
         robot_pose = robot_pose_prime.copy()

@@ -1,6 +1,6 @@
 import os
 
-from src.agent.agent_ppo_lstm3 import Agent
+from src.agent.agent_ppo import Agent
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import argparse
