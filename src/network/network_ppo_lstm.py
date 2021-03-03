@@ -130,7 +130,6 @@ class PPO_LSTM3(nn.Module):
         # out1 : [batch_size, seq_len, input_size]
         out1 = out1.reshape(frame_size[0], frame_size[1], -1)
         out1 = F.relu(self.frame_fc1(out1))
-        print("robot pose shape : ", robot_pose.size())
         out2, (h_out, c_out) = self.lstm(robot_pose, (h_in, c_in))
         # out : [batch_size*seq_len, input_size]
         out = torch.cat((out1, out2), dim=2)

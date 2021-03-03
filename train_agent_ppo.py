@@ -136,7 +136,7 @@ for i_episode in range(0, params['num_episodes']):
             writer.add_scalar('train/num_found_targets', grid_env.count_found_target, i_episode)
             writer.add_scalar('train/num_found_total_cell',
                               grid_env.count_found_free + grid_env.count_found_target, i_episode)
-
+            print(rewards)
             break
 
         if player.memory.is_full_batch():

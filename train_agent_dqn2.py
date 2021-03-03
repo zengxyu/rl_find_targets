@@ -46,7 +46,7 @@ params = {
     # folder params
 
     # output
-    'output_folder': "output_dqn",
+    'output_folder': "output_dqn2",
     'log_folder': 'log',
     'model_folder': 'model',
     'memory_config_dir': "memory_config"
@@ -64,6 +64,7 @@ grid_env = GridEnv(params, painter)
 
 # model_path = os.path.join(params['output_folder'], "model", "Agent_dqn_state_dict_1600.mdl")
 model_path = os.path.join("output_dqn", "model", "Agent_dqn_state_dict_123600.mdl")
+
 
 dqn_agent = Agent(params, painter, model_path="")
 

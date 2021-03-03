@@ -146,8 +146,13 @@ class Agent:
             loss_value = loss.item()
 
             Q_expected2 = self.policy_net(frames_in, robot_poses_in).gather(1, actions)
-            loss_each_item = np.sum(np.abs(Q_expected2.detach().cpu().numpy(), Q_target.cpu().numpy()), axis=0)
-            self.memory.batch_update(tree_idx, loss_each_item)
+
+            # loss_each_item = np.sum(np.abs(Q_expected2.detach().cpu().numpy(), Q_target.cpu().numpy()), axis=0)
+            # self.memory.batch_update(tree_idx, loss_each_item)
+
+            loss_each_item = np.abs(Q_expected2.detach().cpu().numpy(), Q_target.cpu().numpy())
+            self.memory.batch_update(tree_idx[:, np.newaxis], loss_each_item)
+
         if self.time_step % self.update_every == 0:
             self.update_target_network()
         return loss_value

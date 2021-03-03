@@ -19,23 +19,28 @@ class Agent:
         self.writer = writer
         # self.frame_size = np.product(field.shape)
         self.pose_size = 2
-        self.action_size = len(ACTION)
+        self.action_size = params['action_size']
         self.batch_size = params['batch_size']
         self.seq_len = params['seq_len']
         self.num_layers = params['num_layers']
+        self.lr = params['lr']
         self.Model = params['model']
-        # self.BATCH_SIZE = 32
-        self.tlen_counter = 0
-        self.tcol_counter = 0
         # self.FRAME_SKIP = 1
         self.EPSILON = 0.2
-        self.EPOCH_NUM = 4
         self.K_epoch = 16
-        self.gamma = 0.98
+        self.gamma = params['gamma']
         self.train_device = train_device  # 'cuda' if torch.cuda.is_available() else 'cpu'
-        print("train device : {}".format(self.train_device))
+        print("Action size : {}".format(self.action_size))
+        print("Train device : {}".format(self.train_device))
         self.policy = self.get_model(is_resume, filepath)
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=1e-5)
+        print("K epoch : {}".format(self.K_epoch))
+        print("Learning rate : {}".format(self.lr))
+        print("Batch size : {}".format(self.batch_size))
+        print("Seq length : {}".format(self.seq_len))
+        print("Num layers : {}".format(self.num_layers))
+        print("Gamma : {}".format(self.gamma))
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=30, gamma=0.9, last_epoch=-1)
         self.memory = MemoryPPOLSTM(batch_size=self.batch_size, seq_len=self.seq_len)
 
         self.frames, self.robot_poses, self.actions, self.rewards, self.frames_prime, self.robot_poses_prime, self.values, self.probs, self.dones = [], [], [], [], [], [], [], [], [],
@@ -44,6 +49,7 @@ class Agent:
 
     def get_model(self, is_resume, filepath):
         policy = self.Model(self.action_size, self.num_layers).to(self.train_device)
+        print("Model name:", self.Model)
         print("Model:", policy)
         if is_resume:
             self.load_model(filename=filepath, map_location=self.train_device)
@@ -78,7 +84,7 @@ class Agent:
         if len(self.frames) > self.seq_len:
             # compute returns and advantages
             for i in range(0, self.seq_len):
-                return_i = self.rewards[i] + self.gamma * self.values[i + 1] * self.dones[i]
+                return_i = self.rewards[i] + self.gamma * self.values[i + 1] * (1 - self.dones[i])
                 self.returns.append(return_i)
                 self.deltas.append(return_i - self.values[i])
 

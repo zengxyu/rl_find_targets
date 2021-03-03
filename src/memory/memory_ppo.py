@@ -27,7 +27,7 @@ class MemoryPPO:
         # 只有t_th = 0 的时候才取得transition中h_in,c_in,h_out,c_out作为这个seq 的 t0, c0
         for i, key in enumerate(self.data.keys()):
             if key == "done":
-                done_mask = 0 if transitions[i] else 1
+                done_mask = 1 if transitions[i] else 0
                 self.data[key].append([done_mask])
             else:
                 self.data[key].append(transitions[i])

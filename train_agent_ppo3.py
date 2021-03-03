@@ -1,7 +1,6 @@
 import os
 
-from src.agent.agent_ppo_lstm import Agent
-from src.network.network_ppo_lstm import PPO_LSTM2, PPO_LSTM3, PPO_LSTM
+from src.agent.agent_ppo import Agent
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import argparse
@@ -16,13 +15,15 @@ from torch.utils.tensorboard import SummaryWriter
 from src.env.config import FIELD, ACTION, MOVEMENTS
 from src.env.grid_env import GridEnv
 from src.utils.pygame_painter import Painter
-
+"""
+c1, c2 = 1, 0.1
+"""
 parser = argparse.ArgumentParser()
 parser.add_argument("--headless", default=False, action="store_true", help="Run in headless mode")
 args = parser.parse_args()
 
 params = {
-    'name': 'ppo_lstm',
+    'name': 'ppo',
     # field
     'w': FIELD.w,
     'h': FIELD.h,
@@ -35,13 +36,10 @@ params = {
     'eps_start': 0.15,  # Default/starting value of eps
     'eps_decay': 0.99999,  # Epsilon decay rate
     'eps_min': 0.15,  # Minimum epsilon
-    'gamma': 0.98,
+    'gamma': 0.9,
     'buffer_size': 200000,
-    'batch_size': 16,
+    'batch_size': 64,
     'seq_len': 4,
-    'num_layers': 1,
-    'lr': 1e-4,
-    'model': PPO_LSTM,  # PPO_LSTM, PPO_LSTM2, PPO_LSTM3
     'action_size': len(ACTION),
 
     'is_double': False,
@@ -59,7 +57,7 @@ params = {
     # folder params
 
     # output
-    'output_folder': "output_lstm",
+    'output_folder': "output_ppo3",
     'log_folder': 'log',
     'model_folder': 'model',
     'memory_config_dir': "memory_config",
@@ -94,26 +92,22 @@ all_mean_losses = []
 for i_episode in range(0, params['num_episodes']):
     print("\nepisode = ", i_episode)
 
-    h_out = torch.zeros([params['num_layers'], 1, 32], dtype=torch.float)
-    c_out = torch.zeros([params['num_layers'], 1, 32], dtype=torch.float)
-
     observed_map, robot_pose = grid_env.reset()
     done = False
     rewards = []
     losses = []
     while not done:
+        # for t in range(T_horizon):
         # print("\nt horizon = ", t)
         global_step += 1
-        h_in, c_in = h_out, c_out
-        action, value, probs, h_out, c_out = player.act(observed_map, robot_pose, h_in, c_in)
+        action, value, probs = player.act(observed_map, robot_pose)
 
         observed_map_prime, robot_pose_prime, reward, done = grid_env.step(action.detach().cpu().numpy()[0][0])
 
         player.store_data(
             [observed_map, robot_pose, action.detach().cpu().numpy().squeeze(), reward, observed_map_prime,
              robot_pose_prime, value.detach().cpu().numpy().squeeze(), probs.detach().cpu().numpy().squeeze(),
-             done, h_in.detach().cpu().numpy(), c_in.detach().cpu().numpy(), h_out.detach().cpu().numpy(),
-             c_out.detach().cpu().numpy()])
+             done])
 
         observed_map = observed_map_prime.copy()
         robot_pose = robot_pose_prime.copy()
@@ -144,15 +138,12 @@ for i_episode in range(0, params['num_episodes']):
             writer.add_scalar('train/num_found_targets', grid_env.count_found_target, i_episode)
             writer.add_scalar('train/num_found_total_cell',
                               grid_env.count_found_free + grid_env.count_found_target, i_episode)
-
+            print(rewards)
             break
 
         if player.memory.is_full_batch():
             loss = player.train_net()
-
-            player.scheduler.step()
             player.memory.reset_data()
-
             losses.append(loss)
             writer.add_scalar('train/loss', loss, global_step)
 

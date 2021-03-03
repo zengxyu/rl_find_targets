@@ -70,7 +70,7 @@ class Agent:
         if len(self.frames) > self.seq_len:
             # compute returns and advantages
             for i in range(0, self.seq_len):
-                return_i = self.rewards[i] + self.gamma * self.values[i + 1] * self.dones[i]
+                return_i = self.rewards[i] + self.gamma * self.values[i + 1] * (1-self.dones[i])
                 self.returns.append(return_i)
                 self.deltas.append(return_i - self.values[i])
 
@@ -118,8 +118,7 @@ class Agent:
 
             new_vals, new_probs = self.policy(frames, robot_poses)
             old_probs = probs.squeeze(2)
-            # new_categorical = torch.distributions.Categorical(new_probs)
-            # old_categorical = torch.distributions.Categorical(old_probs)
+
             new_prob_a = new_probs.gather(2, actions)
             old_prob_a = old_probs.gather(2, actions)
 
@@ -129,13 +128,16 @@ class Agent:
                                    torch.clamp(ratio, 1 - self.EPSILON, 1 + self.EPSILON) * advantages).mean()
 
             loss_mse = F.mse_loss(new_vals, returns)
-            # loss_ent = -new_categorical.entropy().mean()
+
+            new_probs_reshape = torch.reshape(new_probs, (-1, new_probs.size()[-1]))
+
+            loss_ent = -torch.sum(-torch.log2(new_probs_reshape) * new_probs_reshape, dim=1).mean()
 
             c1, c2 = 1, 0.01
 
             self.optimizer.zero_grad()
 
-            loss = loss_clip + c1 * loss_mse
+            loss = loss_clip + c1 * loss_mse + c2 * loss_ent
             loss.backward(retain_graph=True)
 
             self.optimizer.step()

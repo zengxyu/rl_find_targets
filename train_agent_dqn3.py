@@ -46,7 +46,7 @@ params = {
     # folder params
 
     # output
-    'output_folder': "output_dqn",
+    'output_folder': "output_dqn3",
     'log_folder': 'log',
     'model_folder': 'model',
     'memory_config_dir': "memory_config"
@@ -120,5 +120,6 @@ for i_episode in range(params['num_episodes']):
             writer.add_scalar('train/num_found_targets', grid_env.count_found_target, i_episode)
             writer.add_scalar('train/num_found_total_cell', grid_env.count_found_free + grid_env.count_found_target,
                               i_episode)
+            print("rewards:",rewards)
 
 print('Complete')
